@@ -219,7 +219,7 @@ def t_featurize(file, num_tokens=2048):
     except Exception as e:
         return np.zeros(7)
 
-def select_features(exp_to_data, labels, verbose=True, to_normalize=True, indices=None, min_improve=0.0):
+def select_features(exp_to_data, labels, verbose=True, to_normalize=True, indices=None, min_improve=0.0, max_features=9):
     if to_normalize:
         normalized_exp_to_data = {}
         for key in exp_to_data:
@@ -235,7 +235,7 @@ def select_features(exp_to_data, labels, verbose=True, to_normalize=True, indice
     best_features = []
     i = 0
 
-    while val_exp:
+    while val_exp and len(best_features) < max_features:
         best_score, best_exp = -1, ""
 
         for exp in tqdm.tqdm(val_exp) if verbose else val_exp:
@@ -252,8 +252,8 @@ def select_features(exp_to_data, labels, verbose=True, to_normalize=True, indice
                 f"Iteration {i}, Current Score: {curr}, \
                 Best Feature: {best_exp}, New Score: {best_score}"
             )
-        # 修改这里，允许自定义最小提升
-        if best_score - curr <= min_improve:
+        # 只要没到max_features就继续
+        if best_score - curr <= min_improve and len(best_features) > 0:
             break
         else:
             best_features.append(best_exp)
