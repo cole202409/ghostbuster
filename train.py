@@ -233,7 +233,7 @@ if __name__ == "__main__":
         print(">>> Entering perform_feature_selection branch")
         exp_to_data = pickle.load(open("symbolic_data_gpt", "rb"))
         best_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=train
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=train, max_features=9
         )
         with open("results/best_features_three.txt", "w") as f:
             for feat in best_features:
@@ -246,7 +246,7 @@ if __name__ == "__main__":
             if len(key.split(" ")) <= 4:
                 exp_to_data[key] = old_exp_to_data[key]
         best_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=train
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=train, max_features=9
         )
         with open("results/best_features_two.txt", "w") as f:
             for feat in best_features:
@@ -259,7 +259,7 @@ if __name__ == "__main__":
             if len(key.split(" ")) <= 2:
                 exp_to_data[key] = old_exp_to_data[key]
         best_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=train
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=train, max_features=9
         )
         with open("results/best_features_one.txt", "w") as f:
             for feat in best_features:
@@ -268,7 +268,7 @@ if __name__ == "__main__":
     if args.perform_feature_selection_four:
         exp_to_data = pickle.load(open("symbolic_data_gpt_four", "rb"))
         best_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=train
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=train, max_features=9
         )
         with open("results/best_features_four.txt", "w") as f:
             for feat in best_features:
@@ -281,7 +281,7 @@ if __name__ == "__main__":
             if "neo" not in key and "j6b" not in key:
                 exp_to_data[key] = old_exp_to_data[key]
         best_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=train
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=train, max_features=9
         )
         with open("results/best_features_no_gpt.txt", "w") as f:
             for feat in best_features:
@@ -294,7 +294,7 @@ if __name__ == "__main__":
             if "neo" not in key:
                 exp_to_data[key] = old_exp_to_data[key]
         best_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=train
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=train, max_features=9
         )
         with open("results/best_features_only_ada.txt", "w") as f:
             for feat in best_features:
@@ -307,21 +307,21 @@ if __name__ == "__main__":
         essay_indices = np.where(generate_dataset_fn(lambda file: "essay" in file))[0]
 
         wp_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=wp_indices
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=wp_indices, max_features=9
         )
         with open("results/best_features_wp.txt", "w") as f:
             for feat in wp_features:
                 f.write(feat + "\n")
 
         reuter_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=reuter_indices
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=reuter_indices, max_features=9
         )
         with open("results/best_features_reuter.txt", "w") as f:
             for feat in reuter_features:
                 f.write(feat + "\n")
 
         essay_features = select_features(
-            exp_to_data, labels, verbose=True, to_normalize=True, indices=essay_indices
+            exp_to_data, labels, verbose=True, to_normalize=True, indices=essay_indices, max_features=9
         )
         with open("results/best_features_essay.txt", "w") as f:
             for feat in essay_features:
