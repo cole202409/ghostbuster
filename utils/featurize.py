@@ -1,56 +1,82 @@
 import numpy as np
 import os
 import tqdm
+import re
 from nltk import ngrams
 from utils.score import k_fold_score
+import glob
 
+def safe_trunc(arr, n):
+    return arr[:n] if len(arr) > n else arr
 
 def get_logprobs(file):
     """
     Returns a vector containing all the logprobs from a given logprobs file
     """
     logprobs = []
-
+    bad_line_count = 0
     with open(file) as f:
-        for line in f.read().strip().split("\n"):
-            line = line.split(" ")
-            logprobs.append(np.exp(-float(line[1])))
-
+        for idx, line in enumerate(f.read().strip().split("\n")):
+            # 用正则分割，支持多个空格或制表符
+            parts = re.split(r"[\t ]+", line.strip())
+            if len(parts) < 2:
+                # 跳过空行或格式错误行
+                if len(parts) == 1 and parts[0] == "":
+                    continue
+                bad_line_count += 1
+                continue
+            try:
+                logprobs.append(float(parts[1]))
+            except Exception as e:
+                bad_line_count += 1
+                continue
+    if bad_line_count > 0:
+        print(f"[Warning] Skipped file {file} due to {bad_line_count} bad lines.")
+        return np.array([])  # 直接返回空数组，后续流程会自动跳过
     return np.array(logprobs)
-
 
 def get_tokens(file):
     """
     Returns a list of all tokens from a given logprobs file
     """
+    tokens = []
+    bad_line_count = 0
     with open(file) as f:
-        tokens = list(map(lambda x: x.split(" ")[0], f.read().strip().split("\n")))
+        for idx, line in enumerate(f.read().strip().split("\n")):
+            parts = re.split(r"[\t ]+", line.strip())
+            if len(parts) < 2:
+                # 跳过空行或格式错误行
+                if len(parts) == 1 and parts[0] == "":
+                    continue
+                bad_line_count += 1
+                continue
+            tokens.append(parts[0])
+    if bad_line_count > 0:
+        print(f"[Warning] Skipped file {file} due to {bad_line_count} bad lines.")
+        return []  # 直接返回空列表，后续流程会自动跳过
     return tokens
-
 
 def get_token_len(tokens):
     """
-    Returns a vector of word lengths, in tokens
+    Returns a list of token lengths, considering GPT-2 style tokens
     """
-    tokens_len = []
-    curr = 0
-
+    token_len = []
+    curr = 1
     for token in tokens:
-        if token[0] == "Ġ":
-            tokens_len.append(curr)
+        if len(token) > 0 and token[0] == "Ġ":
+            token_len.append(curr)
             curr = 1
         else:
             curr += 1
-
-    return np.array(tokens_len)
-
+    if curr > 1:
+        token_len.append(curr)
+    return np.array(token_len)
 
 def get_diff(file1, file2):
     """
-    Returns difference in logprobs bewteen file1 and file2
+    Returns difference in logprobs between file1 and file2
     """
     return get_logprobs(file1) - get_logprobs(file2)
-
 
 def convolve(X, window=100):
     """
@@ -61,19 +87,37 @@ def convolve(X, window=100):
         ret.append(np.mean(X[i : i + window]))
     return np.array(ret)
 
-
-def score_ngram(doc, model, tokenizer, n=3, strip_first=False):
+def score_ngram(doc, model, tokenize, n=3, strip_first=False):
     """
-    Returns vector of ngram probabilities given document, model and tokenizer
+    Returns vector of ngram log probabilities given document, model and tokenizer
     """
+    tokens = tokenize(doc.strip())
+    # 保证 tokens 是 list of int
+    if isinstance(tokens, int):
+        tokens = [tokens]
+    elif isinstance(tokens, tuple):
+        tokens = list(tokens)
+    elif not isinstance(tokens, list):
+        if hasattr(tokens, "input_ids"):
+            tokens = tokens["input_ids"]
+            if isinstance(tokens, list):
+                tokens = tokens[0]
+            else:
+                tokens = tokens.squeeze().tolist()
+        else:
+            tokens = list(tokens)
+    # 递归展开嵌套
+    while isinstance(tokens, list) and len(tokens) > 0 and isinstance(tokens[0], list):
+        tokens = tokens[0]
+    # 最终 tokens 必须是 list of int
+    tokens = [int(t) for t in tokens]
     scores = []
-    if strip_first:
-        doc = " ".join(doc.split()[:1000])
-    for i in ngrams((n - 1) * [50256] + tokenizer(doc.strip()), n):
-        scores.append(model.n_gram_probability(i))
-
+    for i in ngrams((n - 1) * [50256] + tokens, n):
+        prob = model.get(i, 1e-10)  # 平滑处理
+        scores.append(np.log(prob))
+    if strip_first and scores:
+        scores = scores[1:]
     return np.array(scores)
-
 
 def normalize(data, mu=None, sigma=None, ret_mu_sigma=False):
     """
@@ -91,66 +135,91 @@ def normalize(data, mu=None, sigma=None, ret_mu_sigma=False):
     else:
         return (data - mu) / sigma
 
-
 def convert_file_to_logprob_file(file_name, model):
     """
-    Removes the extension of file_name, then goes to the logprobs folder of the current directory,
-    and appends a -{model}.txt to it.
-    Example: convert_file_to_logprob_file("data/test.txt", "davinci") = "data/logprobs/test-davinci.txt"
+    支持递归向上查找所有父目录下的 logprobs 文件夹，优先返回实际存在的文件。
     """
     directory = os.path.dirname(file_name)
     base_name = os.path.basename(file_name)
-
     file_name_without_ext = os.path.splitext(base_name)[0]
-    logprob_directory = os.path.join(directory, "logprobs")
-
     logprob_file_name = f"{file_name_without_ext}-{model}.txt"
+    # 递归向上查找 logprobs 目录
+    cur_dir = directory
+    while True:
+        candidate = os.path.join(cur_dir, "logprobs", logprob_file_name)
+        if os.path.exists(candidate):
+            return candidate
+        parent = os.path.dirname(cur_dir)
+        if parent == cur_dir:
+            break
+        cur_dir = parent
+    # 兼容 reuter 结构：如 ghostbuster-data/reuter/gpt/某子文件夹/logprobs
+    # 查找所有子目录下的 logprobs
+    for root, dirs, files in os.walk(directory):
+        if "logprobs" in dirs:
+            candidate = os.path.join(root, "logprobs", logprob_file_name)
+            if os.path.exists(candidate):
+                return candidate
+    # 默认返回原有规则
+    logprob_directory = os.path.join(directory, "logprobs")
     logprob_file_path = os.path.join(logprob_directory, logprob_file_name)
-
     return logprob_file_path
 
+def t_featurize_logprobs(neo_lp, gpt2_lp, tokens):
+    """
+    Handcrafted features for classification based on logprobs and tokens
+    """
+    feats = []
 
-def t_featurize_logprobs(davinci_logprobs, ada_logprobs, tokens):
-    X = []
+    # 处理空输入
+    if len(neo_lp) == 0 or len(gpt2_lp) == 0:
+        return np.zeros(7)
 
-    outliers = []
-    for logprob in davinci_logprobs:
-        if logprob > 3:
-            outliers.append(logprob)
+    # 异常值处理
+    neo_lp = np.clip(neo_lp, -10, 0)
+    gpt2_lp = np.clip(gpt2_lp, -10, 0)
 
-    X.append(len(outliers))
-    outliers += [0] * (50 - len(outliers))
-    X.append(np.mean(outliers[:25]))
-    X.append(np.mean(outliers[25:50]))
+    # 提取异常值
+    neo_outliers = neo_lp[neo_lp < -5]
+    gpt2_outliers = gpt2_lp[gpt2_lp < -5]
+    neo_outliers = safe_trunc(neo_outliers, 50)
+    gpt2_outliers = safe_trunc(gpt2_outliers, 50)
 
-    diffs = sorted(davinci_logprobs - ada_logprobs, reverse=True)
-    diffs += [0] * (50 - min(50, len(diffs)))
-    X.append(np.mean(diffs[:25]))
-    X.append(np.mean(diffs[25:]))
+    # 添加特征
+    feats.extend([
+        len(neo_outliers),
+        np.mean(neo_outliers[:25]) if len(neo_outliers) > 0 else 0.0,
+        np.mean(neo_outliers[25:50]) if len(neo_outliers) > 0 else 0.0,
+        len(gpt2_outliers),
+        np.mean(gpt2_outliers[:25]) if len(gpt2_outliers) > 0 else 0.0,
+        np.mean(gpt2_outliers[25:50]) if len(gpt2_outliers) > 0 else 0.0
+    ])
 
-    token_len = sorted(get_token_len(tokens), reverse=True)
-    token_len += [0] * (50 - min(50, len(token_len)))
-    X.append(np.mean(token_len[:25]))
-    X.append(np.mean(token_len[25:]))
+    # Token 长度特征
+    token_len = [len(t) for t in tokens if isinstance(t, str)]
+    token_len = safe_trunc(sorted(token_len, reverse=True), 50)
+    feats.append(np.mean(token_len[:25]) if len(token_len) > 0 else 0.0)
 
-    return X
-
+    return np.array(feats)
 
 def t_featurize(file, num_tokens=2048):
-    """
-    Manually handcrafted features for classification.
-    """
-    davinci_file = convert_file_to_logprob_file(file, "davinci")
-    ada_file = convert_file_to_logprob_file(file, "ada")
+    try:
+        neo_file = convert_file_to_logprob_file(file, "neo")
+        gpt2_file = convert_file_to_logprob_file(file, "gpt2")
 
-    davinci_logprobs = get_logprobs(davinci_file)[:num_tokens]
-    ada_logprobs = get_logprobs(ada_file)[:num_tokens]
-    tokens = get_tokens(davinci_file)[:num_tokens]
+        if not os.path.exists(neo_file) or not os.path.exists(gpt2_file):
+            return np.zeros(7)
 
-    return t_featurize_logprobs(davinci_logprobs, ada_logprobs, tokens)
+        neo_logprobs = get_logprobs(neo_file)[:num_tokens]
+        gpt2_logprobs = get_logprobs(gpt2_file)[:num_tokens]
+        tokens = get_tokens(neo_file)[:num_tokens]
 
+        result = t_featurize_logprobs(neo_logprobs, gpt2_logprobs, tokens)
+        return result
+    except Exception as e:
+        return np.zeros(7)
 
-def select_features(exp_to_data, labels, verbose=True, to_normalize=True, indices=None):
+def select_features(exp_to_data, labels, verbose=True, to_normalize=True, indices=None, min_improve=0.0):
     if to_normalize:
         normalized_exp_to_data = {}
         for key in exp_to_data:
@@ -183,8 +252,8 @@ def select_features(exp_to_data, labels, verbose=True, to_normalize=True, indice
                 f"Iteration {i}, Current Score: {curr}, \
                 Best Feature: {best_exp}, New Score: {best_score}"
             )
-
-        if best_score <= curr:
+        # 修改这里，允许自定义最小提升
+        if best_score - curr <= min_improve:
             break
         else:
             best_features.append(best_exp)

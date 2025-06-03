@@ -1,23 +1,30 @@
 import numpy as np
-
+from sklearn.model_selection import KFold
 from sklearn.linear_model import LogisticRegression
-from torch.utils.data import random_split
+from sklearn.metrics import f1_score
 
-
-def k_fold_score(X, labels, indices=None, k=8, precision=10):
+def k_fold_score(X, labels, indices=None, k=5, precision=10, random_state=0):
+    """
+    Performs k-fold cross-validation and returns the average weighted F1 score
+    """
     if indices is None:
         indices = np.arange(X.shape[0])
 
-    splits = [len(indices) // k] * k
-    splits[-1] += len(indices) % k
-    k_split = random_split(indices, splits)
+    kf = KFold(n_splits=k, shuffle=True, random_state=random_state)
+    scores = []
 
-    score_sum = 0
-    for i in range(k):
-        train = np.concatenate([np.array(k_split[j]) for j in range(k) if i != j])
-        model = LogisticRegression(C=10, penalty="l2", max_iter=1000)
-        model.fit(X[train], labels[train])
+    for train_idx, test_idx in kf.split(indices):
+        train_idx = indices[train_idx]
+        test_idx = indices[test_idx]
 
-        score_sum += model.score(X[k_split[i]], labels[k_split[i]])
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = labels[train_idx], labels[test_idx]
 
-    return round(score_sum / k, precision)
+        model = LogisticRegression(C=10, penalty="l2", max_iter=1000, class_weight='balanced')
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+
+        score = f1_score(y_test, y_pred, average='weighted')
+        scores.append(score)
+
+    return round(np.mean(scores), precision)

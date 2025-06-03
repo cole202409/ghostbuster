@@ -12,3 +12,4 @@ nltk
 datasets==2.16.1
 transformers==4.36.2
 matplotlib
+PyQt5

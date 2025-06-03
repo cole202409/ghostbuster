@@ -1,6 +1,0 @@
-ada-logprobs s-avg
-davinci-logprobs s-var
-davinci-logprobs s-min
-trigram-logprobs s-var
-davinci-logprobs s-len
-davinci-logprobs s-max

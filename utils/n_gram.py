@@ -1,16 +1,14 @@
 import tqdm
 from collections import defaultdict, Counter
 
-
 class NGramModel:
     """
     An n-gram model, where alpha is the laplace smoothing parameter.
     """
-
-    def __init__(self, train_text, n=2, alpha=3e-3, vocab_size=None):
+    def __init__(self, train_text, n=2, alpha=1e-5, vocab_size=None):
         self.n = n
         if vocab_size is None:
-            # Assume GPT tokenizer
+            # Assume GPT-2 tokenizer
             self.vocab_size = 50257
 
         self.smoothing = alpha
@@ -29,14 +27,12 @@ class NGramModel:
         prob = (it[1][n_gram[-1]] + self.smoothing)/(it[0] + self.smoothing_f)
         return prob
 
-
 class DiscountBackoffModel(NGramModel):
     """
     An n-gram model with discounting and backoff. Delta is the discounting parameter.
     """
-
-    def __init__(self, train_text, lower_order_model, n=2, delta=0.9):
-        super().__init__(train_text, n=n)
+    def __init__(self, train_text, lower_order_model, n=2, delta=0.5):
+        super().__init__(train_text, n=n, alpha=1e-5)
         self.lower_order_model = lower_order_model
         self.discount = delta
 
@@ -55,14 +51,12 @@ class DiscountBackoffModel(NGramModel):
 
         return prob
 
-
 class KneserNeyBaseModel(NGramModel):
     """
     A Kneser-Ney base model, where n=1.
     """
-
     def __init__(self, train_text, vocab_size=None):
-        super().__init__(train_text, n=1, vocab_size=vocab_size)
+        super().__init__(train_text, n=1, alpha=1e-5, vocab_size=vocab_size)
 
         base_cnt = defaultdict(set)
         for i in range(1, len(train_text)):
@@ -85,13 +79,15 @@ class KneserNeyBaseModel(NGramModel):
         else:
             return ret_prob
 
+    def get(self, n_gram, delta=1e-10):
+        prob = self.n_gram_probability(n_gram)
+        return max(prob, delta)
 
 class TrigramBackoff:
     """
     A trigram model with discounting and backoff. Uses a Kneser-Ney base model.
     """
-
-    def __init__(self, train_text, delta=0.9):
+    def __init__(self, train_text, delta=0.5):
         self.base = KneserNeyBaseModel(train_text)
         self.bigram = DiscountBackoffModel(
             train_text, self.base, n=2, delta=delta)
@@ -100,4 +96,12 @@ class TrigramBackoff:
 
     def n_gram_probability(self, n_gram):
         assert len(n_gram) == 3
-        return self.trigram.n_gram_probability(n_gram)
+        prob = self.trigram.n_gram_probability(n_gram)
+        return prob
+
+    def get(self, n_gram, delta=1e-5):
+        """
+        Wrapper for n_gram_probability with smoothing
+        """
+        prob = self.n_gram_probability(n_gram)
+        return max(prob, delta)

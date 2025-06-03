@@ -1,12 +1,15 @@
-unigram-logprobs v-> davinci-logprobs s-var
-unigram-logprobs v-sub davinci-logprobs v-div unigram-logprobs s-avg-top-25
-trigram-logprobs v-> ada-logprobs v-sub davinci-logprobs s-var
-unigram-logprobs v-> trigram-logprobs v-< davinci-logprobs s-avg
-unigram-logprobs v-< trigram-logprobs v-mul ada-logprobs s-avg
-unigram-logprobs v-< trigram-logprobs v-add ada-logprobs s-max
-trigram-logprobs v-< ada-logprobs v-> davinci-logprobs s-var
-trigram-logprobs v-> ada-logprobs v-> davinci-logprobs s-avg-top-25
-ada-logprobs v-sub davinci-logprobs s-l2
-davinci-logprobs s-var
-trigram-logprobs v-< davinci-logprobs v-div unigram-logprobs s-l2
-trigram-logprobs v-> ada-logprobs v-mul davinci-logprobs s-avg
+t_feat_0
+t_feat_1
+t_feat_3
+t_feat_4
+t_feat_5
+t_feat_6
+trigram-logprobs v-sub j6b-logprobs v-mul neo-logprobs s-mean
+j6b-logprobs v-sub neo-logprobs v-div j6b-logprobs s-max
+neo-logprobs v-div unigram-logprobs v-add trigram-logprobs s-min
+trigram-logprobs v-sub neo-logprobs s-mean
+j6b-logprobs v-sub neo-logprobs s-l2-norm
+trigram-logprobs v-> j6b-logprobs s-std
+unigram-logprobs v-add trigram-logprobs v-< neo-logprobs s-mean
+trigram-logprobs v-> neo-logprobs v-div j6b-logprobs s-var
+unigram-logprobs v-add trigram-logprobs v-> neo-logprobs s-mean

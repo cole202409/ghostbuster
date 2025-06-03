@@ -19,7 +19,7 @@ def get_generate_dataset_normal(path: str, verbose=False):
     to_iter = tqdm.tqdm(os.listdir(path)) if verbose else os.listdir(path)
 
     for file in to_iter:
-        if file in DIR_IGNORE:
+        if file in DIR_IGNORE or file.startswith(".") or file.startswith("__") or "ipynb_checkpoints" in file:
             continue
         files.append(f"{path}/{file}")
 
@@ -37,8 +37,10 @@ def get_generate_dataset_author(path: str, author: str, verbose=False):
     to_iter = tqdm.tqdm(authors) if verbose else authors
 
     for author in to_iter:
+        if author.startswith(".") or author.startswith("__") or "ipynb_checkpoints" in author:
+            continue
         for file in sorted(os.listdir(f"{path}/{author}")):
-            if file in DIR_IGNORE:
+            if file in DIR_IGNORE or file.startswith(".") or file.startswith("__") or "ipynb_checkpoints" in file:
                 continue
             files.append(f"{path}/{author}/{file}")
 
@@ -63,7 +65,11 @@ def get_generate_dataset(*datasets: Dataset):
         for file in files:
             if "logprobs" in file:
                 continue
-            data.append(featurize(file))
-        return np.array(data)
+            try:
+                data.append(featurize(file))
+            except Exception as e:
+                data.append(np.zeros(7))  # 保证shape一致
+        data = np.array(data)
+        return data
 
     return generate_dataset
